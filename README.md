@@ -16,3 +16,5 @@ Requires:
 
 The texture_tools file contains the core functions for importing and procesing raking light texture images.
 
+Example steps in example.py
+
