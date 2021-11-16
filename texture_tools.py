@@ -1,5 +1,5 @@
 import warnings
-#import os
+import time
 import glob
 
 import numpy as np
@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import steerablepyrtexture as spt
 from PIL import Image
 
-from skimage.transform import rescale
+from skimage.transform import rescale, resize
 from skimage import filters 
 from skimage.color import rgb2gray
 from scipy import linalg
@@ -15,7 +15,8 @@ from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
 from sklearn.utils.multiclass import unique_labels
 from sklearn.utils.validation import check_is_fitted
 from sklearn.covariance import empirical_covariance
-from scipy.spatial.distance import cdist
+from scipy.spatial.distance import cdist, squareform
+from sklearn.cluster import MeanShift
 
 from sklearn.utils.estimator_checks import check_estimator
 
@@ -69,24 +70,28 @@ def standard_img_proc(img,ds=1):
     scale = 10/np.size(img,0)
     img = rescale(img,scale/.00488281)
     
-    # Approximate flat-field correction
-    FF = filters.gaussian(img, sigma=100)
-    FFmean = np.average(FF, axis=None)  
-    imgC = np.divide(img,FF)*FFmean   
+    img = imgcrop_pct(img,5)
+        
+    tmp = img.flatten()
+    y, _ = np.histogram(tmp, bins=np.linspace(0,1,101))
+    peak = np.argmax(y)
+    exposure_correction = 0.5/(peak/100)
     
-    # Clean up image.  Crop, adjust exposure, and remove out-of-bounds values.
-    imgout = imgcrop_pct(imgC,10)
-    imgout = imgout / np.percentile(imgout,99.9)*0.975
-    #imgout = imgout / np.average(imgout) * 0.75
+    imgout = img*exposure_correction
+    
+    if ds != 1:
+        imgout = rescale(imgout, 1/ds)
+    
     imgout[imgout < 0] = 0
     imgout[imgout > 1] = 1
     
     
-    if ds > 1:
-        imgout = rescale(imgout, 1/ds)
-    
     return imgout
 
+
+
+        
+        
 
 def image_tiles(img,tilesize,n0,n1):
     """ Cut an image into square tiles of an arbitrary size and number of
@@ -149,7 +154,10 @@ def image_tiles(img,tilesize,n0,n1):
     
 
 
-def import_process_raking_folder(directory, output_tiles=False):
+def import_process_raking_folder(directory_list, output_directory, 
+                                 same_ff=False,
+                                 output_images=True, overwrite=False,
+                                 output_params=False):
     """ Import all the tifs in a directory, preprocess, tile, and extract
         features from the images.
     
@@ -157,10 +165,302 @@ def import_process_raking_folder(directory, output_tiles=False):
     Parameters
     ----------
     directory : str
-        The location of the directory to import.
-    output_tiles : bool, optional
-        If True, will save the tile images in the directory. 
+        The directory to import.
+    output_directory: str
+        The directory to save output images.
+    same_ff : bool
+        If True, the same flat-field correction will be applied to every image
+        that is imported, but the average will still use only images part of 
+        the largest identified cluster.
         The default is False.
+    output_images : bool, optional
+        If True, will save the images in the directory.
+        The default is True.
+    overwrite : bool, optional
+        If False, a new image will be created with a new filename for any 
+        images with the same name. If True, repeated names will cause the 
+        previous image to be overwritten.
+        The default is False.
+    output_params : bool, optional
+        If True, will compute the steerable pyramid parameters. 
+        The default is False.
+
+    Returns
+    -------
+    FF_cluster : list of ndarrays
+        List containing the estimated flat field image for each cluster.
+    id_labelvec : list of strings
+        List of the names of each image (labeled per tile).
+    sp_params : ndarray
+        The feature vector describing each tile. Shape (n_tiles, n_parameters).
+
+    """  
+    file_list = []
+    for i in range(len(directory_list)):
+        file_list.extend(glob.glob(directory_list[i] + "\\*.tif"))
+        
+    num_import = len(file_list)
+    print('  ')
+    if num_import == 0:
+        print('No TIFF images found in directory')
+    else:
+        print(f'{num_import} images to import \n')
+    
+    
+    image_sizes = []
+    image_stacks = []
+    image_sizes_idx = []
+    ct = 0
+    for file in file_list:
+        
+        I = np.asarray(Image.open(file))
+        img = rgb2gray(I)
+        
+        tmp = np.array([img.shape])
+        
+        img2 = rescale(img, 0.10)
+        
+        if not np.all(np.any(tmp == image_sizes, axis=0)):
+            print(tmp)
+            image_sizes.append(tmp)
+            image_stacks.append(np.expand_dims(img2, axis=2))
+            image_sizes_idx.append(np.array([ct]))
+            
+            if same_ff:
+                if len(image_sizes) > 1:
+                    warnings.warn('Multiple image resolutions incompatible ' +
+                                  'with same_ff option')
+                    return None
+        else:
+            idx = np.nonzero(np.all(np.all(tmp == image_sizes, axis=1), axis=1))[0][0]
+            image_stacks[idx] = np.concatenate((image_stacks[idx], 
+                                                np.expand_dims(img2, axis=2)),
+                                                axis=2)
+            image_sizes_idx[idx] = np.concatenate((image_sizes_idx[idx], 
+                                                   np.array([ct])), axis=0)
+        
+        if (ct)%25 == 0:
+                print(f'Initial Import {ct/num_import*100:.2f}% Complete')
+        
+        ct += 1
+        
+    num_imported = ct
+    
+    ## Clustering
+    
+    cluster_size_idx = []
+    cluster_idx = []
+    cluster_images = []
+    cluster_FF = []
+    tmp_idx = []
+    FF2_dists = []
+    cluster_center_dists = []
+    cluster_center_img = []
+    for idx in range(len(image_sizes)):
+        FF = np.zeros_like(image_stacks[idx])
+        FF2 = np.zeros_like(FF)
+        tmp = rescale(FF[:,:,0], 0.25)
+        FF2_feat = np.zeros((tmp.shape[0], tmp.shape[1], FF.shape[2]))
+        
+        cluster_dists = []
+        cluster_dist_range = []
+        for i in range(image_stacks[idx].shape[2]):
+            FF[:,:,i] = filters.gaussian(np.squeeze(image_stacks[idx][:,:,i]),
+                                         sigma=12)
+            FF2[:,:,i] = FF[:,:,i]/FF[:,:,i].mean()
+            FF2_feat[:,:,i] = rescale(FF2[:,:,i],0.25)
+            if (i)%100 == 0:
+                print(f'FF2 {i/image_stacks[idx].shape[2]*100:.2f}% Complete')
+        
+        
+        tmp = np.reshape(FF2_feat, 
+                         (FF2_feat.shape[0]*FF2_feat.shape[1],FF2_feat.shape[2])).T
+        FF2_dists.append(cdist(tmp, tmp))
+        
+        clustering = MeanShift(cluster_all=False).fit(tmp)
+        num_clusts = clustering.cluster_centers_.shape[0]
+        clust_delete = []
+        for j in range(num_clusts):
+            b = np.nonzero(clustering.labels_ == j)[0]
+            if b.size < 15:
+                clustering.labels_[b] = -1
+                clust_delete.append(j)
+        
+        clust_delete = np.array(clust_delete)
+        mask = np.ones((num_clusts,), dtype=bool)
+        mask[clust_delete] = False
+        clustering.cluster_centers_ = clustering.cluster_centers_[mask,:]
+                 
+        num_clusts = clustering.cluster_centers_.shape[0]                              
+                
+        cluster_center_dists.append(cdist(clustering.cluster_centers_, 
+                                          clustering.cluster_centers_))
+        if num_clusts > 1:
+            unclust_max = 0.75*squareform(cluster_center_dists[-1]).min()
+        else:
+            unclust_max = 5
+        
+        for j in range(num_clusts):
+            cluster_center_img.append(np.reshape(clustering.cluster_centers_[j,:], 
+                                        (FF2_feat.shape[0], FF2_feat.shape[1])))
+        
+        for j in range(num_clusts):
+            b = np.nonzero(clustering.labels_ == j)[0]
+            tmp_dists = cdist(clustering.cluster_centers_[j:j+1,:], tmp[b])
+            cluster_dist_range.append(tmp_dists.max()*1.4)
+            cluster_dists.append(tmp_dists)
+            
+        cluster_dist_range = np.array(cluster_dist_range)
+        cluster_dist_range[cluster_dist_range > unclust_max] = unclust_max
+    
+        b = np.nonzero(clustering.labels_ == -1 )[0]
+        unclust_dists = cdist(clustering.cluster_centers_, 
+                                              tmp[b])
+        
+        if unclust_dists.size > 0:
+            for j in range(unclust_dists.shape[1]):
+                c = np.argmin(unclust_dists[:,j])
+                if unclust_dists[c,j] < cluster_dist_range[c]:
+                    clustering.labels_[b[j]] = c
+        
+    
+        for i in np.unique(clustering.labels_):
+            if i==-1:
+                continue
+            
+            FF_idx = np.nonzero(clustering.labels_ == i)[0]
+            
+            tmp_idx.append(FF_idx)
+            cluster_idx.append(image_sizes_idx[idx][FF_idx])
+            cluster_images.append(np.average(image_stacks[idx][:,:,FF_idx], 
+                                             axis=2))
+            cluster_FF.append(FF2[:,:,FF_idx])
+            cluster_size_idx.append(idx)
+            
+    tmp = cluster_idx[0]
+    for i in range(1,len(cluster_idx)):
+        tmp = np.concatenate((tmp, cluster_idx[i]), axis=0)
+
+    unclustered_idx = np.setdiff1d(np.arange(ct),tmp)
+    
+    FF_cluster = [np.array([])]*len(cluster_idx)
+    idx_cluster = np.ones((num_imported,))*-1
+    idx_cluster = idx_cluster.astype(int)
+    for i in range(len(cluster_idx)):
+        FF_cluster[i] = resize(cluster_images[i], 
+                               (image_sizes[cluster_size_idx[i]][0,0], 
+                                image_sizes[cluster_size_idx[i]][0,1])) 
+        for j in range(cluster_idx[i].size):
+            idx_cluster[cluster_idx[i][j]] = i
+            
+            
+    cluster_sizes = []
+    for i in range(len(cluster_idx)):
+        cluster_sizes.append(cluster_idx[i].size)
+        
+    print(f'Number of flat field clusters: {len(cluster_idx)}')
+    print(f'Number of images without clusters: {len(unclustered_idx)}')
+    print(' ')
+    
+    if same_ff: 
+        if len(cluster_idx) > 1:
+            warnings.warn('Multiple clusters identified with same_ff ON')
+         
+            cluster_sizes = np.array(cluster_sizes)
+            main_cluster_idx = np.argmin(cluster_sizes)
+            
+        else:
+            main_cluster_idx = 0
+         
+         
+        
+    ## Correction
+    
+    id_labelvec = []
+    sp_params = np.zeros((0,2195))
+    ct = 0
+    for file in file_list:
+        
+        
+        I = plt.imread(file)
+        img = rgb2gray(I)
+        
+        
+        tmp_idx = idx_cluster[ct]
+        if tmp_idx >= 0:
+            if same_ff:
+                FF = FF_cluster[tmp_idx]
+            else:
+                alpha = 1 - 8/cluster_sizes[tmp_idx]
+                
+                if alpha > 0.9:
+                    FF = FF_cluster[tmp_idx]
+                else:
+                    FF1 = filters.gaussian(img, sigma=120)
+                    FF = alpha*FF_cluster[tmp_idx] + (1-alpha)*FF1
+        
+        else:
+            if same_ff:
+                FF = FF_cluster[main_cluster_idx]
+            else:
+                FF = filters.gaussian(img, sigma=120)
+
+            
+        FFmean = np.average(FF, axis=None)  
+        imgC = np.divide(img,FF)*FFmean  
+        
+        imgout = standard_img_proc(imgC, ds=3)
+    
+    ## Steerable Pyramid Parameters
+    
+        if output_params:
+            
+            tiles = image_tiles(imgout,256,2,3)
+                
+            for tilei in tiles:
+                tmpparams = spt.texture_analyze(tilei, 5, 4, 7, 
+                                                vector_output=True)
+                tmpparams = np.reshape(tmpparams,(1,2195))
+                id_name = file.split('\\')[-1][:-4].split('_')[0]
+                id_labelvec.append(id_name)
+                sp_params = np.concatenate((sp_params, tmpparams), axis=0)
+            
+    
+        
+    ## Image file output
+        if output_images:
+            id_name = file.split('\\')[-1][:-4]
+            tmpImage = Image.fromarray(imgout)
+            out_file = output_directory + '\\' + id_name +'.tif'
+            if not overwrite:
+                repeat_ct = 1
+                while glob.glob(out_file):
+                    repeat_ct += 1
+                    out_file = output_directory + '\\' + id_name \
+                               + f'_{repeat_ct:2d}' + '.tif'
+                
+            tmpImage.save(out_file)
+                
+        if (ct)%25 == 0:
+                print(f'Processing {ct/num_imported*100:.2f}% Complete')
+        
+        ct += 1
+    
+    if output_params:
+        return id_labelvec, sp_params
+    else:
+        return FF_cluster
+    
+    
+def sp_param_extract_folder(directory):
+    """
+    Calculate steerable pyramid features from a directory containing
+    pre-processed texture .tifs
+
+    Parameters
+    ----------
+    directory : str
+        Location to import pre-processed images from.
 
     Returns
     -------
@@ -169,46 +469,47 @@ def import_process_raking_folder(directory, output_tiles=False):
     sp_params : ndarray
         The feature vector describing each tile. Shape (n_tiles, n_parameters).
 
-    """  
-    #os.chdir(directory)
-    num_import = len(glob.glob(directory + "\\*.tif"))
+    """
+    
+    directory_list = [directory]
+    
+    file_list = []
+    for i in range(len(directory_list)):
+        file_list.extend(glob.glob(directory_list[i] + "\\*.tif"))
+    
+    num_import = len(file_list)
     if num_import == 0:
         print('No TIFF images found in directory')
-    
+    else:
+        print(f'{num_import} images to import \n')
     
     id_labelvec = []
-    sp_params = np.zeros((2195,0))
+    sp_params = np.zeros((0,2195))
     ct = 0
-    for file in glob.glob(directory + "\\*.tif"):
-        print(file)
+    for file in file_list:
         
-        I = plt.imread(file)
-        img = rgb2gray(I)
-        imgout = standard_img_proc(img,3)
-        tiles = image_tiles(imgout,256,2,3)
+        img = np.asarray(Image.open(file))
         
+        tiles = image_tiles(img,256,2,3)
+                
         for tilei in tiles:
             tmpparams = spt.texture_analyze(tilei, 5, 4, 7, vector_output=True)
-            tmpparams = np.reshape(tmpparams,(2195,1))
-            file_name = file[len(directory)+1:-4]
-            id_name = file_name.split('_')[0]
+            tmpparams = np.reshape(tmpparams,(1,2195))
+            id_name = file.split('\\')[-1][:-4].split('_')[0]
             id_labelvec.append(id_name)
-            sp_params = np.concatenate((sp_params, tmpparams), axis=1)
+            sp_params = np.concatenate((sp_params, tmpparams), axis=0)
             
-            if output_tiles:
-                tmpImage = Image.fromarray(tilei)
-                tmpImage.save(directory + '\\output_tiles1' + f'\\{ct:05}.tif')
+            time.sleep(0.1)
+            time.sleep(0.5)
             
-            ct += 1
+        time.sleep(0.8)    
         
-        if (ct/6)%10 == 0:
-            print(f'{ct/num_import/6*100:.2f}% Complete')
-        
+        ct += 1
+        if (ct)%10 == 0:
+            time.sleep(6) 
+            print(f'Processing {ct/num_import*100:.2f}% Complete')
             
-        #if ct/6 >= 15:
-            #break
-    
-    return id_labelvec, sp_params   
+    return id_labelvec, sp_params
 
 
 def _class_means(X, y):
