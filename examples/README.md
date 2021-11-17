@@ -1,4 +1,4 @@
-# Viewing the bands of the steerable pyramid decomposition of an image (steerable_pyramid.py)
+## Viewing the bands of the steerable pyramid decomposition of an image (steerable_pyramid.py)
 
 Steerable pyramid (SP) is a mutli-scale, oriented decomposition of the images. The image can be divided into frequency bands and orientation-specific subbands. This allows it to also be used as a filter for these qualities by reconstructing the image from the SP coefficients of each subband.
 
@@ -21,3 +21,10 @@ In this example groups of bands are isolated and the image is reconstructed base
 ![image](https://user-images.githubusercontent.com/9450221/142087445-11822942-e968-4379-aa4e-ba03e046811f.png)
 
 While these bands provide a detailed decomposition by frequency and orientation of the image, for use as texture descriptors we extract parameters that act as statistical summaries of the subbands and relationships between them with the goal being to avoid the texture description being senstitive to the particularities of a single image.
+
+
+## Reducing the number of features (dim_red.py)
+
+The default parameters used in the SP decomposition return 2,195 features, 1,712 of which contain variation and are useful. For many tasks it is better to work with a smaller set of features, and due to the features being adjacent cross-correlation matrix elements there is a degree of correlation built into the feature set that can be removed with linear combinations of the features. 
+
+One way to choose linear combinations of the features is to find the ones that are most informative in terms of separating some kind of classes among the data. The only truly reliable classes we have are the sample ID's themselves because they represent different instances of the same texture. In this example the dimensions are reduced by finding the 100 most informative linear combinations of the original feature space in terms of separating the different classes from each other based on an assumption of normality of their feature distributions. It will return 100 features, but they are rank ordered so by only using the first *n* dimensions it will give the most informative *n*-dimensional feature vectors.
