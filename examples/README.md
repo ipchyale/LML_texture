@@ -8,10 +8,14 @@ To show the different bands it is more intuitive to reconstruct the image from a
 
 In the example groups of bands are isolated (high/low)
 
-![image](https://user-images.githubusercontent.com/9450221/142087332-97ac0c4b-d873-44b6-8437-9cce9fd4c057.png)
+![image](https://user-images.githubusercontent.com/9450221/142087468-b9d0f141-fe39-45e2-a622-fcdea95ca2c6.png)
 
-and by orientation (within leve 4)
+![image](https://user-images.githubusercontent.com/9450221/142087409-31c922af-4002-45c6-80b2-c5c49c475ffa.png)
 
-![image](https://user-images.githubusercontent.com/9450221/142087339-574eee01-c371-4fb4-a8f2-2e8d90d8e69e.png)
+and by orientation (within level 3)
+
+![image](https://user-images.githubusercontent.com/9450221/142087485-0926c96a-ae52-4f5c-9611-f7a77565bca3.png)
+
+![image](https://user-images.githubusercontent.com/9450221/142087445-11822942-e968-4379-aa4e-ba03e046811f.png)
 
 While these bands provide a detailed decomposition by frequency and orientation of the image, for use as texture descriptors we extract parameters that act as statistical summaries of the subbands and relationships between them with the goal being to avoid the texture description being senstitive to the particularities of a single image.
