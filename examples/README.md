@@ -8,13 +8,13 @@ To show the different bands it is more intuitive to reconstruct the image from a
 
 In this example groups of bands are isolated and the image is reconstructed based solely on their coefficients:
 
-###### high/low
+###### Levels (High = 4, 5, Low = 1, 2 ,3)
 
 ![image](https://user-images.githubusercontent.com/9450221/142087468-b9d0f141-fe39-45e2-a622-fcdea95ca2c6.png)
 
 ![image](https://user-images.githubusercontent.com/9450221/142087409-31c922af-4002-45c6-80b2-c5c49c475ffa.png)
 
-###### orientation (within level 3)
+###### Orientation (within level 3)
 
 ![image](https://user-images.githubusercontent.com/9450221/142087485-0926c96a-ae52-4f5c-9611-f7a77565bca3.png)
 
