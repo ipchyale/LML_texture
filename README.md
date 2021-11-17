@@ -6,6 +6,7 @@ Requires:
 - scipy
 - matplotlib
 - PIL
+- pickle
 - skimage
 - sklearn
 - steerablepyrtexture
