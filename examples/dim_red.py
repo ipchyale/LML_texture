@@ -3,8 +3,14 @@ import numpy as np
 from texture_tools import LDAReducedRank
 from texture_tools import LinearDimReduce
 
-# %% Use SP parameters as features and sample ID's as labels
+# Load SP parameter vectors and associated labels
+sp_params = np.load(r'C:\\SPparams.npy') 
 
+tmp = pd.read_csv(r'C:\...\IDS.csv',
+                  header=None)
+id_labels = np.squeeze(tmp.to_numpy(dtype=str))
+
+# %% Use SP parameters as features and sample ID's as labels
 y = id_labels
 
 tmp = np.std(sp_params, axis=0)
