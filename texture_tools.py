@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import steerablepyrtexture as spt
 from PIL import Image
+import pickle
 
 from skimage.transform import rescale, resize
 from skimage import filters 
@@ -769,6 +770,43 @@ class LDAReducedRank(ClassifierMixin, TransformerMixin, BaseEstimator):
         proba = proba/proba.sum(axis=1, keepdims=1)
         
         return proba
+    
+class LinearDimReduce:
+    
+    def __init__(self, 
+                 keep_idx=None, scalings=None, xbar=None, max_components=None):
+        self.keep_idx = keep_idx
+        self.scalings = scalings
+        self.xbar = xbar
+        self.max_components = max_components
+    
+    def clone_lda_rr(self, lda_instance):
+        self.scalings = lda_instance.scalings_
+        self.xbar = lda_instance.xbar_
+        self.max_components = lda_instance._max_components
+        
+    def load(self, file_name):
+        file = open(file_name, 'rb')
+        loaded_inst = pickle.load(file)
+        
+        self.keep_idx = loaded_inst.keep_idx
+        self.scalings = loaded_inst.scalings
+        self.xbar = loaded_inst.xbar
+        self.max_components = loaded_inst.max_components   
+        
+    def transform(self, x):
+        if not self.keep_idx is None:
+            x = x[:, self.keep_idx]
+            
+        x_new = np.dot(x - self.xbar, self.scalings)
+
+        return x_new[:, : self.max_components]   
+        
+    def save(self, file_name):
+        file = open(file_name, 'wb')
+        pickle.dump(self, file)
+        
+        
 
 
 def mahal_dist(x1, x2, invcov):
