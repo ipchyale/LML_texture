@@ -28,3 +28,22 @@ While these bands provide a detailed decomposition by frequency and orientation 
 The default parameters used in the SP decomposition return 2,195 features, 1,712 of which contain variation and are useful. For many tasks it is better to work with a smaller set of features, and due to the features being adjacent cross-correlation matrix elements there is a degree of correlation built into the feature set that can be removed with linear combinations of the features. 
 
 One way to choose linear combinations of the features is to find the ones that are most informative in terms of separating some kind of classes among the data. The only truly reliable classes we have are the sample ID's themselves because they represent different instances of the same texture. In this example the dimensions are reduced by finding the 100 most informative linear combinations of the original feature space in terms of separating the different classes from each other based on an assumption of normality of their feature distributions. It will return 100 features, but they are rank ordered so by only using the first *n* dimensions it will give the most informative *n*-dimensional feature vectors.
+
+## Comparing two different sets of images (compare_images_by_folder.py)
+
+This examples compares two sets of images with a high degree of overlap between the ID's of the samples contained in each. The goal is to compare how similar the samples from the 2nd (new) folder that has repeated measurements of each ID with the first (old) folder that only contains one image per ID.
+
+It starts with the SP features already being extracted and their corresponding ID labels for each of the tiles for each image. The first step is to reduce the features down to 100 by using LDA to choose the most discriminative features. If the original features are *x*, we call the 100-dimensional discriminant coordinates *x2*. We can further transform into the vectors such that the LDA within-class covariance matrix is the identity matrix by repeating the LDA step with gamma=0. Using gamma > 0 in the first step is the reason the covariance is not identity after the first step.
+
+Labels have to be created to distinguish not just what ID each tile has, but whether it is the 1st, 2nd, 3rd, etc. instance of that ID. Those labels can be used to compare different samples with the same ID to each other.
+
+The first plot shows the distributions of distances between groups of images: between all images, between new images with the same ID, and between old images and new images with the same ID.
+
+![image](https://user-images.githubusercontent.com/9450221/142299852-307a4c69-6892-4829-a541-0d6ab431a951.png)
+
+Next stats of the distances between tiles from the same sample and between samples with the same ID will be compared to find how much the texture descriptors vary sample-to-sample. The basic stats of the between and within sample distributions are printed out and shown in histogram form
+
+![image](https://user-images.githubusercontent.com/9450221/142300049-002cbadf-7ef1-4a5a-a18e-411891be7041.png)
+
+In this data we can see there is some divergence between the two folders.
+
