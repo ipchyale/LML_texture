@@ -23,7 +23,7 @@ Example steps for processing a folder of raking light images and then extracting
 
 A tutorial on some of the functions and features for texture processing.
 
-## Glyphs
+## Glyph
 
 Predicting texture glyph values from steerable pyramid features.
 
