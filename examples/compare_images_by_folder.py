@@ -17,10 +17,8 @@ def create_new_label_per_n(label_list, n):
     label_set = set(label_list)
     label_new = np.zeros_like(label_list, dtype=int)
     for label in label_set:
-        #print(label)
         idx = [i for i, x in enumerate(label_list) if x == label]
         for i in range(len(idx)):
-            #label_new.append(i//n)
             label_new[idx[i]] = i//n
             
     return label_new
