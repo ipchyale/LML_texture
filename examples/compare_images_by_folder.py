@@ -106,7 +106,7 @@ unique_ids, y_inv = np.unique(y_means, return_inverse=True)
 
 # %% Calculate distances by sample ID/pocket and old vs. new
 n_dim_dist = 100
-x_means = _class_means(x3[:, :n_dim_dist], y2)
+x_means = _class_means(x3[:, :n_dim_dist], y2) #x, x2, or x3 can be used here
 dist_all = squareform(pdist(x_means))
 
 dist_pocket = np.zeros((0,))
