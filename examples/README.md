@@ -6,7 +6,7 @@ In the example a grayscale tiff is opened and decomposed into 5 levels and 4 ori
 
 To show the different bands it is more intuitive to reconstruct the image from a subset of the bands than to look at their coefficients. The reconstructed images will be the same size as the original which is easier to compare as the levels get downsmapled by a factor of 2 at each iteration.
 
-In this example groups of bands are isolated and the image is reconstructed based solely on their coefficients:
+In this example groups of bands are isolated and the image is reconstructed based on only their coefficients:
 
 ###### Levels (High = 4, 5, Low = 1, 2 ,3)
 
