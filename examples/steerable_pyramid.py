@@ -3,6 +3,13 @@ import matplotlib.pyplot as plt
 
 from steerablepyrtexture.pyramids import SteerablePyramidFreq
 
+# %% Getting feature names
+tmpparams = spt.texture_analyze(np.zeros((256,256)), 5, 4, 7, vector_output=False)
+feat_names = spt.feature_vector_names(5, 4, 7)
+
+
+# %% Viewing the SP images
+
 Nsc = 5
 Nor = 4
 
