@@ -183,6 +183,9 @@ def import_process_raking_folder(directory_list, output_directory,
     output_params : bool, optional
         If True, will compute the steerable pyramid parameters. 
         The default is False.
+    output_ff : bool, optional
+        If True, will save the cluster assignments and cluster flat-fields in
+        the output directory as numpy files.
 
     Returns
     -------
