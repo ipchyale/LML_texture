@@ -89,8 +89,6 @@ def standard_img_proc(img,ds=1):
     
     return imgout
 
-
-
         
         
 
@@ -158,7 +156,7 @@ def image_tiles(img,tilesize,n0,n1):
 def import_process_raking_folder(directory_list, output_directory, 
                                  same_ff=False,
                                  output_images=True, overwrite=False,
-                                 output_params=False):
+                                 output_params=False, output_ff=False):
     """ Import all the tifs in a directory, preprocess, tile, and extract
         features from the images.
     
@@ -196,6 +194,32 @@ def import_process_raking_folder(directory_list, output_directory,
         The feature vector describing each tile. Shape (n_tiles, n_parameters).
 
     """  
+    
+    
+    ### MAIN PARAMETERS
+    # Assigned clusters smaller than size will be unassigned, but may be 
+    # merged back into larger clusters on the next step
+    MIN_CLUSTER_SIZE = 15 
+    
+    # Ratio of cluster-to-cluster distance used for merging
+    MERGE_OUTLIER_FACTOR = 0.75
+    
+    # If there is only 1 cluster used this distance for merging
+    OUTLIER_MAX_DIST = 5
+    
+    # The alpha value is the weighting factor between the averaged FF and the 
+    # Gaussian blur FF. For very large clusters alpha approaches 1.0. This 
+    # value should be greater than MIN_CLUSTER_SIZE to avoid negative weights.
+    ALPHA_NUMERATOR = 8
+    if ALPHA_NUMERATOR >= MIN_CLUSTER_SIZE:
+        ALPHA_NUMERATOR  = MIN_CLUSTER_SIZE + 1
+        
+    # The value of alpha above which the Gaussian FF will be ignored. 
+    # Effectively makes it so large enough clusters will only be corrected
+    # with the FF estimated by averaging the cluster.
+    ALPHA_CUTOFF = 0.9
+    
+    
     file_list = []
     for i in range(len(directory_list)):
         file_list.extend(glob.glob(directory_list[i] + "\\*.tif"))
@@ -207,7 +231,7 @@ def import_process_raking_folder(directory_list, output_directory,
     else:
         print(f'{num_import} images to import \n')
     
-    
+    # Import and downsample the whole list to get FF estimates for clustering.
     image_sizes = []
     image_stacks = []
     image_sizes_idx = []
@@ -274,16 +298,18 @@ def import_process_raking_folder(directory_list, output_directory,
                 print(f'FF2 {i/image_stacks[idx].shape[2]*100:.2f}% Complete')
         
         
+        # Calculate distances for clustering
         tmp = np.reshape(FF2_feat, 
                          (FF2_feat.shape[0]*FF2_feat.shape[1],FF2_feat.shape[2])).T
         FF2_dists.append(cdist(tmp, tmp))
         
+        # Use mean shift clustering algorithm to assign clusters
         clustering = MeanShift(cluster_all=False).fit(tmp)
         num_clusts = clustering.cluster_centers_.shape[0]
         clust_delete = []
         for j in range(num_clusts):
             b = np.nonzero(clustering.labels_ == j)[0]
-            if b.size < 15:
+            if b.size < MIN_CLUSTER_SIZE:
                 clustering.labels_[b] = -1
                 clust_delete.append(j)
         
@@ -296,10 +322,13 @@ def import_process_raking_folder(directory_list, output_directory,
                 
         cluster_center_dists.append(cdist(clustering.cluster_centers_, 
                                           clustering.cluster_centers_))
+        
+        # Attempt to recluster unassigned images
         if num_clusts > 1:
-            unclust_max = 0.75*squareform(cluster_center_dists[-1]).min()
+            unclust_max = MERGE_OUTLIER_FACTOR \
+                          * squareform(cluster_center_dists[-1]).min()
         else:
-            unclust_max = 5
+            unclust_max = OUTLIER_MAX_DIST
         
         for j in range(num_clusts):
             cluster_center_img.append(np.reshape(clustering.cluster_centers_[j,:], 
@@ -324,7 +353,7 @@ def import_process_raking_folder(directory_list, output_directory,
                 if unclust_dists[c,j] < cluster_dist_range[c]:
                     clustering.labels_[b[j]] = c
         
-    
+        # Stack clusters
         for i in np.unique(clustering.labels_):
             if i==-1:
                 continue
@@ -344,6 +373,7 @@ def import_process_raking_folder(directory_list, output_directory,
 
     unclustered_idx = np.setdiff1d(np.arange(ct),tmp)
     
+    # Define clustering outputs
     FF_cluster = [np.array([])]*len(cluster_idx)
     idx_cluster = np.ones((num_imported,))*-1
     idx_cluster = idx_cluster.astype(int)
@@ -372,8 +402,14 @@ def import_process_raking_folder(directory_list, output_directory,
             
         else:
             main_cluster_idx = 0
-         
-         
+    
+    # Save the estimated cluster-based flat-fields
+    if output_ff:
+        out_file = output_directory + '\\cluster_assignments.npy'
+        np.save(out_file, idx_cluster)
+        
+        out_file = output_directory + '\\cluster_FF.npy'
+        np.save(out_file, FF_cluster)
         
     ## Correction
     
@@ -392,9 +428,9 @@ def import_process_raking_folder(directory_list, output_directory,
             if same_ff:
                 FF = FF_cluster[tmp_idx]
             else:
-                alpha = 1 - 8/cluster_sizes[tmp_idx]
+                alpha = 1 - ALPHA_NUMERATOR/cluster_sizes[tmp_idx]
                 
-                if alpha > 0.9:
+                if alpha > ALPHA_CUTOFF:
                     FF = FF_cluster[tmp_idx]
                 else:
                     FF1 = filters.gaussian(img, sigma=120)
@@ -565,7 +601,8 @@ def _class_cov(X, y, priors, shrinkage=0):
 
 
 class LDAReducedRank(ClassifierMixin, TransformerMixin, BaseEstimator):
-    """ Linear Discriminant Anaysis with regularization towards Diagonal
+    """ 
+    Linear Discriminant Anaysis with regularization towards Diagonal
     
     Modification of the sklearn LinearDiscriminantAnalysis class.
     
@@ -772,6 +809,30 @@ class LDAReducedRank(ClassifierMixin, TransformerMixin, BaseEstimator):
         return proba
     
 class LinearDimReduce:
+    """
+    Class for save and applying linear (matrix multiplication) transforms.
+    
+    
+    Parameters
+    ----------
+    keep_idx : array
+        List of features to keep from array. If an array that is larger than
+        the transform matrix is attempted to be transformed it will first
+        be reduced to the correct size by keeping only the feature numbers
+        included in this array.
+    scalings : array (n_input_dims x n_output_dims)
+        The transformation matrix
+    xbar : array
+        The average vector. Subtracted before transform, but may be handled 
+        outside this class easily or ignored if not important by setting to 0s.
+    max_components : int
+        The maximum number of dimensions to keep. This will truncate the 
+        output of transform() to this size if the scalings matrix 2nd dimension
+        is larger than max_components.
+    
+    
+    
+    """
     
     def __init__(self, 
                  keep_idx=None, scalings=None, xbar=None, max_components=None):
@@ -781,11 +842,23 @@ class LinearDimReduce:
         self.max_components = max_components
     
     def clone_lda_rr(self, lda_instance):
+        """
+        Copy the transform from an instance of LDAReducedRank.
+
+        Parameters
+        ----------
+        lda_instance : LDAReducedRank
+            Class instance to copy from.
+
+        """
         self.scalings = lda_instance.scalings_
         self.xbar = lda_instance.xbar_
         self.max_components = lda_instance._max_components
         
     def load(self, file_name):
+        """
+        Load the values from a saved instance.
+        """
         file = open(file_name, 'rb')
         loaded_inst = pickle.load(file)
         
@@ -795,7 +868,21 @@ class LinearDimReduce:
         self.max_components = loaded_inst.max_components   
         
     def transform(self, x):
-        if not self.keep_idx is None:
+        """
+        Transform the input feature vectors, x.
+
+        Parameters
+        ----------
+        x : array
+            An array of feature vectors (n_samples x n_dims).
+
+        Returns
+        -------
+        array
+            Transformed features.
+
+        """
+        if not self.keep_idx is None and x.shape[1] != self.xbar.size:
             x = x[:, self.keep_idx]
             
         x_new = np.dot(x - self.xbar, self.scalings)
@@ -803,6 +890,10 @@ class LinearDimReduce:
         return x_new[:, : self.max_components]   
         
     def save(self, file_name):
+        """
+       Save this instance to a pickle file.
+
+        """
         file = open(file_name, 'wb')
         pickle.dump(self, file)
         
