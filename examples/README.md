@@ -51,13 +51,13 @@ In this data we can see there is some divergence between the two folders.
 
 ## Importing metadata from the catalog and comparing labels from the metadata (compare_catalog_labels.py)
 
-In this example the catalog is imported as a DataFrame alongside a data set. A subset of the columns of the metadata that correspond to the images in the dataset is turned into a new feature vector. The texture label from the catalog is used as a class label for machine learning to see how the manufacturer-applied texture labels relate to one another and how consistent they are.
+In this example the catalog is imported as a DataFrame alongside a data set. A subset of the columns of the metadata that correspond to the images in the dataset is turned into a new feature vector. The texture label from the catalog is used as a class label for machine learning (using sklearn) to see how the manufacturer-applied texture labels relate to one another and how consistent they are.
 
 First the data set is imported and labels are created on a per-image/sample basis rather than looking at individual tiles.
 
 Then the catalog is imported as a DataFrame with some changes to empty values and data types of the columns. The basic metadata (ID #, Manufacturer, Brand, Year) and texture-related metadata are put into a class vector in alignment with the feature vectors taht were just imported.
 
-Using the Texture2 column from the catalog as the class labels an LDA model is trained on the data and using this model we can compare how similar classes are by their class means,
+Using the Texture2 column from the catalog as the class labels an sklearn LDA model is trained on the data and using this model we can compare how similar classes are by their class means,
 
 ![image](https://user-images.githubusercontent.com/9450221/143085373-1e13509b-aec0-49c8-a4c9-0f4d29e6e14c.png)
 
