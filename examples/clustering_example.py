@@ -30,7 +30,7 @@ tmp, tmp1 = np.unique(y_persample, return_index=True)
 Y = y[tmp1]
 
 
-# %% Sample means
+# %% Sample means and z-score
 n_dim_keep = 25
 class_means = _class_means(x[:,:n_dim_keep], y)
 
