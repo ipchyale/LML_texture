@@ -78,7 +78,7 @@ We can also view the distribution of predicted labels in the imported data
 ![image](https://user-images.githubusercontent.com/9450221/143086035-03508703-042f-4b9a-8115-1c684c128fb2.png)
 
 
-## Clustering textures (cluster_example.py)
+## Clustering textures (clustering_example.py)
 
 We know there are textures in the collection that are made to be the same or similar to each other and that many others are similar due to similarities across the process of producing the papers. It may be useful to group similar textures in an unsupervised manner (as opposed to the previous example) to find these similarities in a collection.
 
