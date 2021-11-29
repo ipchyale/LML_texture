@@ -78,6 +78,18 @@ We can also view the distribution of predicted labels in the imported data
 ![image](https://user-images.githubusercontent.com/9450221/143086035-03508703-042f-4b9a-8115-1c684c128fb2.png)
 
 
+## Clustering textures (cluster_example.py)
+
+We know there are textures in the collection that are made to be the same or similar to each other and that many others are similar due to similarities across the process of producing the papers. It may be useful to group similar textures in an unsupervised manner (as opposed to the previous example) to find these similarities in a collection.
+
+In this example the features from a collection will be loaded in tile format, but will be averaged together to form a vector per image. Clustering will be performed on the textures from the collection of images using a hierachical clustering method with Ward linkages. Then the clusters can be plotted for visual inspection.
+
+![image](https://user-images.githubusercontent.com/9450221/143925394-a705f87e-0539-423d-91c6-44cb34fff34f.png)
+
+![image](https://user-images.githubusercontent.com/9450221/143925429-a888cc87-467d-4ded-b702-98d4bedab3ab.png)
+
+![image](https://user-images.githubusercontent.com/9450221/143925473-c67b935b-353c-47b8-a7ce-fed5dbae1473.png)
+
 
 
 
